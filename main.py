@@ -14,14 +14,14 @@ prg = cl.Program(ctx, """
     {
          int gid = get_global_id(0);
          for (int i = 0; i < 1000000; ++i) {
-            //a[gid] *= get_local_id(0);
+            a[gid] *= get_local_id(0);
          }
          c[gid] = get_local_id(0);
     }
     """).build()
 
 #params
-task_size = 300
+task_size = 200
 local_sizes = np.array([1, 2, 4, 8, 16, 32, 64])
 colors = ['blue', 'red', 'magenta', 'green', 'orange', 'black', 'purple', 'cyan', 'coral', 'xkcd:sky blue', 'xkcd:brick red']
 
