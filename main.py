@@ -10,18 +10,19 @@ PYOPENCL_CTX='0'
 queue = cl.CommandQueue(ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
 
 prg = cl.Program(ctx, """
-    __kernel void vector_add(__global float *a, __global float *c)
+    __kernel void vector_add(__global float *a)
     {
          int gid = get_global_id(0);
-         for (int i = 0; i < 1000000; ++i) {
-            a[gid] *= get_local_id(0);
+         float temp = 1;
+         for (int i = 0; i < 10000000; ++i) {
+            temp *= get_local_id(0);
          }
-         c[gid] = get_local_id(0);
+         a[gid] = temp;
     }
     """).build()
 
 #params
-task_size = 200
+task_size = 800
 local_sizes = np.array([1, 2, 4, 8, 16, 32, 64])
 colors = ['blue', 'red', 'magenta', 'green', 'orange', 'black', 'purple', 'cyan', 'coral', 'xkcd:sky blue', 'xkcd:brick red']
 
@@ -52,7 +53,7 @@ while local_size_idx < len(local_sizes):
    c_buf = cl.Buffer(ctx, mf.WRITE_ONLY, c.nbytes)
 
    start = time.time()
-   event = prg.vector_add(queue, global_size, local_size, a_buf, c_buf) 
+   event = prg.vector_add(queue, global_size, local_size, a_buf) 
    event.wait()  # block until GPU finishes
    end = time.time()
 
