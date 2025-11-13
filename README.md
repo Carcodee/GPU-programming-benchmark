@@ -1,13 +1,29 @@
-GPU Programming Benchmark
+# GPU Programming Benchmark
 
-This project is a focused performance study that evaluates how different OpenCL kernel designs and different local work group sizes influence overall GPU throughput. The goal is to understand the internal behavior of modern GPUs at a low level. This includes how cores, streaming multiprocessors, execution units, thread blocks and local memory usage interact to determine occupancy and performance.
+A focused GPU performance study exploring how different OpenCL kernel designs and different local work group sizes affect throughput, occupancy, and scaling behavior on modern GPUs.  
+This benchmark aims to reveal how shared memory pressure, thread organization, and hardware scheduling influence real GPU performance.
 
-The figures shown in this repository visualize the execution time of two kernels, each exploring a different resource usage scenario. By sweeping the global work size while holding the local size fixed, the benchmark reveals how the GPU scales, how occupancy changes, and how shared memory pressure reduces parallelism.
+---
 
-Tested Kernels
-1. reduce_occupancy
+## Overview
 
-This kernel allocates a large block of local memory and performs work on it:
+This project compares two main scenarios:
+
+1. **High shared-memory usage** (reduced occupancy)  
+2. **Zero shared-memory usage** (maximum occupancy)
+
+By sweeping the global size for each local size configuration, the benchmark exposes where the GPU saturates, where performance plateaus, and how internal SM/compute-unit limits influence execution time.
+
+The repository contains both the Python benchmarking script and generated plots.
+
+---
+
+## Tested Kernels
+
+### 1. reduce_occupancy (shared memory heavy)
+
+This kernel allocates a large local memory buffer, forcing the GPU to reserve substantial shared memory per block and reducing simultaneous block residency.
+
 ```c
 __kernel void reduce_occupancy(__global float *a)
 {
@@ -28,13 +44,13 @@ __kernel void reduce_occupancy(__global float *a)
      a[gid] = temp;
 }
 ```
+This kernel stresses local memory usage, forcing each work group to reserve roughly 45 KB of shared memory.
+On GPUs with limited shared memory per SM, this significantly reduces occupancy and exposes how shared memory pressure affects performance.
 
-This kernel stresses local memory usage and forces each work group to reserve approximately 45 KB of shared memory. On GPUs with smaller shared memory budgets per SM, this reduces the number of simultaneously resident work groups, producing measurable occupancy loss. The benchmark helps visualize how severe this effect is.
+2. increase_occupancy (ALU-only baseline)
+This kernel performs the same arithmetic loop but avoids using local memory completely, allowing maximum parallelism.
 
-2. increase_occupancy
-
-This kernel performs the same arithmetic loop but avoids using local memory:
-```c
+```
 __kernel void increase_occupancy(__global float *a)
 {
      float temp = 1.0f;
@@ -47,56 +63,43 @@ __kernel void increase_occupancy(__global float *a)
 }
 ```
 
-Since it uses no shared memory and performs purely ALU work, it typically allows the GPU scheduler to run many more blocks in parallel. This kernel serves as the baseline for maximum occupancy.
+Because no shared memory is allocated, the GPU scheduler can keep far more work groups resident simultaneously.
+This kernel serves as the baseline for maximum occupancy.
 
-Benchmark Methodology
+##Benchmark Methodology
+For each local_size, the Python script:
 
-The Python script performs the following steps for each local work group size:
+- Starts with a global size equal to the largest local size.
+- Increases global size proportionally to the local size.
+- Allocates OpenCL buffers.
+- Enqueues the kernel through PyOpenCL with profiling enabled.
+- Records GPU execution time.
+- Repeats for every local size and stores all results.
 
-Start with a minimal global size equal to the largest local size.
-
-Increase the global size in steps proportional to the local work group size to keep block counts growing smoothly.
-
-Allocate buffers and enqueue the kernel.
-
-Measure GPU execution time using CommandQueue profiling.
-
-Repeat for all local sizes and record results.
-
-Global sizes sweep from small counts (few blocks) to large counts (many blocks). This exposes how each kernel saturates the GPU and where performance plateaus or drops.
-
-Example code excerpt:
+##Example snippet:
 
 ```python
+Copy code
 local_sizes = np.array([1, 2, 4, 8, 16, 32, 64])
 global_size_arr = np.zeros((len(local_sizes), task_size), dtype=int)
 elapsed_times = np.zeros((len(local_sizes), task_size), dtype=float)
+Each local size produces a full timing curve, and all curves are plotted together to compare occupancy behavior.
 ```
 
-Each local size produces a full curve that is then plotted on the same graph for comparison.
+##What You Learn From This Benchmark
+- How shared memory allocation reduces SM occupancy.
 
-What You Learn From This Benchmark
+- Why small local sizes limit SIMD utilization and often hurt throughput.
 
-How shared memory allocation affects occupancy and prevents multiple blocks from co-existing on a single SM.
+- How large local sizes can saturate compute units but may exceed per-SM limits.
 
-How small local sizes reduce SIMD parallelism and often hurt throughput.
+- When the GPU reaches full occupancy and why performance stops scaling.
 
-How large local sizes may saturate execution units but can also exceed per SM limits depending on the GPU model.
+- How global size interacts with work group size to match or mismatch the GPU hardware scheduling model.
 
-Where the GPU reaches full occupancy and why execution time stops scaling after that point.
-
-How global size interacts with block size to match or mismatch the GPU hardware execution model.
-
-How to Run
-
-Ensure you have:
-
-OpenCL drivers installed
-
-Python 3
-
-PyOpenCL
-
-NumPy
-
-Matplotlib
+##Requirements
+- OpenCL 1.2 or newer
+- Python 3.x
+- PyOpenCL
+- NumPy
+- Matplotlib
