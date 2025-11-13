@@ -10,19 +10,34 @@ PYOPENCL_CTX='0'
 queue = cl.CommandQueue(ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
 
 prg = cl.Program(ctx, """
-    __kernel void vector_add(__global float *a)
+    __kernel void reduce_occupancy(__global float *a)
     {
-         int gid = get_global_id(0);
-         float temp = 1;
-         for (int i = 0; i < 10000000; ++i) {
+         __local float shared[1024 * 11];
+         barrier(CLK_LOCAL_MEM_FENCE);
+         int lid = get_local_id(0);
+         for(int i = 0; i < 1024 * 11; i++){
+            shared[lid] *= lid * 2.0f;
+          }
+         float temp = 1.0f;
+         for (int i = 0; i < 1000000; ++i) {
             temp *= get_local_id(0);
          }
+         int gid = get_global_id(0);
+         a[gid] = temp;
+    }
+    __kernel void increase_occupancy(__global float *a)
+    {
+         float temp = 1.0f;
+         for (int i = 0; i < 1000000; ++i) {
+            temp *= get_local_id(0);
+         }
+         int gid = get_global_id(0);
          a[gid] = temp;
     }
     """).build()
 
 #params
-task_size = 800
+task_size = 200
 local_sizes = np.array([1, 2, 4, 8, 16, 32, 64])
 colors = ['blue', 'red', 'magenta', 'green', 'orange', 'black', 'purple', 'cyan', 'coral', 'xkcd:sky blue', 'xkcd:brick red']
 
@@ -53,7 +68,7 @@ while local_size_idx < len(local_sizes):
    c_buf = cl.Buffer(ctx, mf.WRITE_ONLY, c.nbytes)
 
    start = time.time()
-   event = prg.vector_add(queue, global_size, local_size, a_buf) 
+   event = prg.reduce_occupancy(queue, global_size, local_size, a_buf) 
    event.wait()  # block until GPU finishes
    end = time.time()
 
